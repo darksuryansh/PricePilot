@@ -111,9 +111,106 @@ SCRAPER_API_KEY = "1e2111f03040896d16ef0c94ecfd16ee"   # <-- replace with your r
 HTTPERROR_ALLOWED_CODES = [400, 403, 404]
 # settings.py
 
+
+
+# ... (your other settings like BOT_NAME) ...
+
+# You already have these, they are correct
+DOWNLOAD_HANDLERS = {
+    "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+    "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
+}
+TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+
+PLAYWRIGHT_LAUNCH_OPTIONS = {
+    "headless": True
+}
+PLAYWRIGHT_CONTEXTS = {
+    "persistent": {
+        "user_data_dir": "playwright_user_data"
+    }
+}
+
+# === ⬇️ ADD THIS ONE LINE ⬇️ ===
+# This tells Playwright to use Firefox instead of Chromium
+PLAYWRIGHT_BROWSER_TYPE = "firefox"
+# === ⬆️ END OF NEW LINE ⬆️ ===
+
+
+# ... (your other settings like PIPELINES) ...
+
+# Scrapy settings for amazon project
+# Scrapy settings for price_scraper project
+
+BOT_NAME = 'price_scraper'
+
+SPIDER_MODULES = ['price_scraper.spiders']
+NEWSPIDER_MODULE = 'price_scraper.spiders'
+
+# Obey robots.txt rules
+ROBOTSTXT_OBEY = False
+
+# Configure delays and concurrency
+DOWNLOAD_DELAY = 2
+RANDOMIZE_DOWNLOAD_DELAY = True
+CONCURRENT_REQUESTS = 1
+CONCURRENT_REQUESTS_PER_DOMAIN = 1
+
+# User agent
+USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+
+# Playwright configuration
 DOWNLOAD_HANDLERS = {
     "http": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
     "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
 }
 
-TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
+PLAYWRIGHT_BROWSER_TYPE = "firefox"
+PLAYWRIGHT_LAUNCH_OPTIONS = {
+    "headless": True,
+    "timeout": 60000,
+    # Add args to prevent the "Firefox is already running" popup
+    "args": [
+        "--no-remote",
+        "--new-instance"
+    ]
+}
+
+# Remove persistent context to avoid profile conflicts
+# Each run will use a fresh browser instance
+PLAYWRIGHT_CONTEXTS = {
+    "default": {
+        "viewport": {"width": 1920, "height": 1080},
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    }
+}
+
+# Enable and configure the AutoThrottle extension
+AUTOTHROTTLE_ENABLED = True
+AUTOTHROTTLE_START_DELAY = 1
+AUTOTHROTTLE_MAX_DELAY = 60
+AUTOTHROTTLE_TARGET_CONCURRENCY = 1.0
+
+# Configure pipelines (optional - comment out if you don't need it)
+# ITEM_PIPELINES = {
+#     'price_scraper.pipelines.PriceScraperPipeline': 300,
+# }
+
+# Retry configuration
+RETRY_TIMES = 3
+RETRY_HTTP_CODES = [500, 502, 503, 504, 522, 524, 408, 429, 403]
+
+# Logging
+LOG_LEVEL = 'INFO'
+
+# Disable cookies (can help avoid detection)
+COOKIES_ENABLED = False
+
+# Set maximum concurrent requests
+CONCURRENT_REQUESTS_PER_IP = 1
+
+# Configure pipelines
+ITEM_PIPELINES = {
+    'price_scraper.pipelines.MongoPipeline': 300,
+    'price_scraper.pipelines.JsonExportPipeline': 400,  # Optional: also export to JSON
+}

@@ -1,0 +1,14 @@
+10
+
+https://www.amazon.in/
+https://www.amazon.in/service-worker.js
+false
+{bc1330a3-4b4b-40bf-a20c-799e3ee11f3f}
+0
+1762948140444787
+1762948140446511
+1762948140346188
+0
+true
+0
+#

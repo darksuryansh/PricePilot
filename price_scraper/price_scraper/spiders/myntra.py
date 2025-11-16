@@ -1,112 +1,472 @@
-# import scrapy
-# from scrapy_playwright.page import PageMethod
+# scrapy crawl myntra -a url="https://www.myntra.com/..." -o myntra.json
+#  scrapy crawl myntra -a url="https://www.myntra.com/watches/michael+kors/michael-kors-women-rose-gold-pyper-analogue-watch-mk3897/10899600/buy" -o myntra.json                                                                                                                                                                                             
 
-# class MyntraSpider(scrapy.Spider):
-#     name = 'myntra'
-
-#     async def start(self):
-#         url = 'https://www.myntra.com/proteins/muscleblaze/muscleblaze-biozyme-performance-rich-chocolate-whey-protein-powder-1kg/25248982/buy'
-#         yield scrapy.Request(
-#             url,
-#             callback=self.parse,
-#             meta=dict(
-#                 playwright=True,
-#                 playwright_include_page=True,
-#                 playwright_page_methods=[
-#                     PageMethod('wait_for_selector', 'h1.pdp-title'),
-#                 ],
-#             )
-#         )
-
-#     async def parse(self, response):
-#         yield {
-#             'website': 'Myntra',
-#             'title': response.css('h1.pdp-title::text').get('').strip(),
-#             'price': response.css('span.pdp-price strong::text').get('').strip(),   
-#             'image_url': response.css('div.image-grid-image img::attr(src)').get('')
-#         }
-
-
-
-
-#scrapy crawl myntra -a url="https://www.myntra.com/watches/wrogn/wrogn-men-blue-printed-dial--steel-toned-stainless-steel-straps-analogue-watch-wrg00107a/16109462/buy" -o myntra.json
-
-import scrapy
-import json
 import re
+import json
+import os
+import scrapy
+import requests
+from dotenv import load_dotenv
+from pathlib import Path
 
-# IMPORTANT: Keep your API key secure and do not share it publicly.
-API_KEY = "1e2111f03040896d16ef0c94ecfd16ee"
+# Load environment variables from .env file
+env_path = Path(__file__).resolve().parent.parent.parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
 
 class MyntraSpider(scrapy.Spider):
     name = "myntra"
 
-    def __init__(self, url=None, *args, **kwargs):
-        super(MyntraSpider, self).__init__(*args, **kwargs)
-        if url:
-            self.start_urls = [url]
+    def __init__(self, url=None, product_id=None, api_key=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.url = url
+        
+        # Get API key from command line argument or environment variable
+        self.api_key = api_key or os.getenv('RAPIDAPI_KEY')
+        
+        # Extract product_id from URL if not provided
+        if url and not product_id:
+            # Myntra URLs: https://www.myntra.com/kurtas/jompers/product-name/27638086/buy
+            # Extract the number before /buy
+            product_id_match = re.search(r'/(\d{6,})/buy', url)
+            if not product_id_match:
+                # Alternative: last number in URL
+                product_id_match = re.search(r'/(\d{6,})', url)
+            
+            self.product_id = product_id_match.group(1) if product_id_match else None
         else:
-            self.logger.error("No URL provided. Please run with: -a url='<your_url>'")
-            self.start_urls = []
+            self.product_id = product_id
+        
+        if not url and not product_id:
+            raise ValueError("Either URL or product_id must be provided")
+        
+        if self.api_key:
+            self.logger.info("✓ API key loaded successfully")
+        else:
+            self.logger.warning("⚠ No API key provided - will skip API calls")
+        
+        self.human_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
     def start_requests(self):
-        for url in self.start_urls:
-            # THE FIX: Added '&premium=true' to use higher-quality proxies
-            api_url = f"http://api.scraperapi.com/?api_key={API_KEY}&url={url}&render=true&premium=true"
-            yield scrapy.Request(api_url, callback=self.parse, meta={"original_url": url})
+        """Start scraping - try API first, fallback to web scraping"""
+        
+        # Skip API for now since it's returning 500
+        # If you want to try API: uncomment below
+        # if self.api_key:
+        #     self.logger.info(f"🔍 Trying Agent Commerce API for: {self.url}")
+        #     api_data = self.get_api_data(self.url)
+        #     if api_data:
+        #         self.logger.info("✅ API data received successfully")
+        #         yield api_data
+        #         return
+        
+        # Go straight to web scraping with scrolling to load reviews
+        if self.url:
+            self.logger.info(f"🌐 Scraping Myntra product page")
+            yield scrapy.Request(
+                self.url,
+                callback=self.parse,
+                dont_filter=True,
+                meta={
+                    "playwright": True,
+                    "playwright_context": "default",
+                    "playwright_page_goto_kwargs": {
+                        "wait_until": "networkidle",
+                        "timeout": 60000,
+                    },
+                    "playwright_page_methods": [
+                        # Scroll to middle of page
+                        ("wait_for_timeout", 2000),
+                        ("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
+                        ("wait_for_timeout", 2000),
+                        # Scroll to bottom to load reviews
+                        ("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
+                        ("wait_for_timeout", 2000),
+                        # Scroll again
+                        ("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
+                        ("wait_for_timeout", 2000),
+                    ],
+                },
+                errback=self.errback_handler
+            )
+
+    def get_api_data(self, product_url):
+        """Fetch product data from Agent Commerce Audit API"""
+        
+        api_url = "https://agent-commerce-audit1.p.rapidapi.com/audit"
+        
+        headers = {
+            "Content-Type": "application/json",
+            "x-rapidapi-key": self.api_key,
+            "x-rapidapi-host": "agent-commerce-audit1.p.rapidapi.com"
+        }
+        
+        payload = {
+            "url": product_url
+        }
+        
+        try:
+            self.logger.info(f"📡 Calling Agent Commerce API...")
+            response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+            response.raise_for_status()
+            
+            data = response.json()
+            self.logger.info(f"API Response received")
+            
+            return self.process_api_response(data, product_url)
+            
+        except Exception as e:
+            self.logger.error(f"❌ API request failed: {e}")
+            return None
+
+    def process_api_response(self, api_data, product_url):
+        """Process data from API"""
+        
+        # Extract product ID
+        product_id_match = re.search(r'/(\d{6,})/buy', product_url)
+        if not product_id_match:
+            product_id_match = re.search(r'/(\d{6,})', product_url)
+        product_id = product_id_match.group(1) if product_id_match else None
+        
+        product_data = api_data.get('data', {}) or api_data
+        
+        title = product_data.get('title') or product_data.get('name')
+        brand = product_data.get('brand')
+        
+        price_data = product_data.get('price', {})
+        if isinstance(price_data, dict):
+            price = price_data.get('discounted') or price_data.get('mrp')
+            original_price = price_data.get('mrp')
+            discount = price_data.get('discount')
+        else:
+            price = product_data.get('discounted_price') or product_data.get('price')
+            original_price = product_data.get('mrp')
+            discount = product_data.get('discount')
+        
+        price_numeric = self._extract_price(price)
+        
+        availability = "In Stock" if product_data.get('in_stock', True) else "Out of Stock"
+        
+        rating = product_data.get('rating') or product_data.get('average_rating')
+        total_reviews = product_data.get('reviews_count')
+        total_ratings = product_data.get('ratings_count')
+        
+        images = product_data.get('images', [])
+        if not isinstance(images, list):
+            images = [images] if images else []
+        
+        description = product_data.get('description')
+        specifications = product_data.get('specifications', {})
+        sizes = product_data.get('sizes', [])
+        colors = product_data.get('colors', [])
+        
+        result = {
+            "product_id": product_id,
+            "url": product_url,
+            "title": title,
+            "brand": brand,
+            "price": price,
+            "price_numeric": price_numeric,
+            "original_price": original_price,
+            "discount": discount,
+            "availability": availability,
+            "rating": float(rating) if rating else None,
+            "total_reviews": int(total_reviews) if total_reviews else None,
+            "total_ratings": int(total_ratings) if total_ratings else None,
+            "images": images,
+            "description": description,
+            "specifications": specifications,
+            "sizes": sizes,
+            "colors": colors,
+            "reviews_from_page": [],
+            "data_source": "agent_commerce_api"
+        }
+        
+        self.logger.info(f"✅ Processed: {title}")
+        return result
 
     def parse(self, response):
-        # ... (The rest of the parse method remains exactly the same) ...
-        original_url = response.meta["original_url"]
-
-        ld_json_text = response.xpath('//script[@type="application/ld+json"]/text()').get()
-        data = {}
-        if ld_json_text:
-            try:
-                data = json.loads(ld_json_text)
-            except json.JSONDecodeError:
-                self.logger.warning("Could not parse ld+json data on Myntra page.")
-
-        def get_nested(d, *keys):
-            for key in keys:
-                if isinstance(d, dict):
-                    d = d.get(key)
-                else:
-                    return None
-            return d
-            
-        product_id_match = re.search(r'/(\d+)/buy', original_url)
+        """Parse data from Myntra web page"""
+        
+        # Extract product ID - FIXED
+        product_id_match = re.search(r'/(\d{6,})/buy', self.url)
+        if not product_id_match:
+            product_id_match = re.search(r'/(\d{6,})', self.url)
+        
         product_id = product_id_match.group(1) if product_id_match else None
 
-        brand = get_nested(data, "brand", "name") or response.css('h1.pdp-title::text').get()
-        title = get_nested(data, "name") or response.css('h1.pdp-name::text').get()
+        if not product_id:
+            self.logger.error(f"❌ Could not extract product ID from URL: {self.url}")
+            self.logger.error(f"URL structure: Please use format like /27638086/buy")
+            return
 
-        price_str = get_nested(data, "offers", "price") or response.css('span.pdp-price strong::text').get()
-        price = None
-        if price_str:
-            price = float(re.sub(r'[^\d.]', '', str(price_str)))
+        self.logger.info(f"✅ Processing Myntra Product ID: {product_id}")
 
-        rating = get_nested(data, "aggregateRating", "ratingValue") or response.css('div.index-averageRating::text').get()
+        # Scrape from page (after scrolling done by playwright_page_methods)
+        scraped_data = self.scrape_from_page(response, product_id)
         
-        review_count_str = get_nested(data, "aggregateRating", "ratingCount") or response.css('div.index-ratingsCount::text').get()
-        review_count = 0
-        if review_count_str:
-            count_text = str(review_count_str).lower().replace('ratings', '').strip()
-            if 'k' in count_text:
-                num = float(count_text.replace('k', ''))
-                review_count = int(num * 1000)
-            else:
-                review_count = int(re.sub(r'\D', '', count_text))
-
-        images = get_nested(data, "image")
-
-        yield {
+        # Build final result
+        combined_data = {
             "product_id": product_id,
-            "brand": brand.strip() if brand else None,
-            "title": title.strip() if title else None,
-            "price": price,
-            "rating": float(rating) if rating else None,
-            "review_count": review_count,
-            "images": images,
-            "url": original_url,
+            "url": self.url,
+            "platform": "myntra",  # Add platform identifier
+            "title": scraped_data.get("title"),
+            "brand": scraped_data.get("brand"),
+            "price": scraped_data.get("price"),
+            "price_numeric": scraped_data.get("price_numeric"),
+            "original_price": scraped_data.get("original_price"),
+            "discount": scraped_data.get("discount"),
+            "availability": scraped_data.get("availability"),
+            "rating": scraped_data.get("rating"),
+            "total_reviews": scraped_data.get("total_reviews"),
+            "total_ratings": scraped_data.get("total_ratings"),
+            "images": scraped_data.get("images", []),
+            "description": scraped_data.get("description"),
+            "specifications": scraped_data.get("specifications", {}),
+            "sizes": scraped_data.get("sizes", []),
+            "colors": scraped_data.get("colors", []),
+            "reviews_from_page": scraped_data.get("reviews_from_page", []),
+            "data_source": "web_scraping"
         }
+
+        yield combined_data
+
+    def scrape_from_page(self, response, product_id):
+        """Scrape product data from Myntra page"""
+        
+        # Title and Brand - Myntra shows Brand first, then product name
+        title_container = response.css("h1.pdp-title, h1.pdp-name").get()
+        
+        # Brand is the first part
+        brand = response.css("h1.pdp-title::text, h1.pdp-name::text").get()
+        if brand:
+            brand = brand.strip()
+        
+        # Full title includes brand + product name
+        title_parts = response.css("h1.pdp-title::text, h1.pdp-name::text").getall()
+        if title_parts:
+            title = " ".join([t.strip() for t in title_parts if t.strip()])
+        else:
+            title = brand
+        
+        # Price
+        price = response.css("span.pdp-price strong::text, div.pdp-price strong::text").get()
+        original_price = response.css("span.pdp-mrp::text, span.pdp-discount-price::text").get()
+        discount = response.css("span.pdp-discount::text").get()
+        
+        price_numeric = self._extract_price(price)
+        
+        # Availability
+        availability = "In Stock"
+        if response.css(".size-buttons-out-of-stock, .pdp-notAvailable").get():
+            availability = "Out of Stock"
+        
+        # Rating and Reviews
+        rating = response.css("div.index-overallRating div::text, span.index-overallRating::text").get()
+        
+        # Total ratings and reviews - Try multiple selectors and methods
+        ratings_text = response.css("div.index-ratingsCount::text, span.index-ratingsCount::text, .index-ratingsCount::text").get()
+        reviews_text = response.css("div.index-reviewsCount::text, span.index-reviewsCount::text, .index-reviewsCount::text").get()
+        
+        # Look for ratings/reviews in the entire ratings section
+        ratings_section_text = " ".join(response.css(".index-ratingsContainer *::text, [class*='rating'] *::text, [class*='review'] *::text").getall())
+        
+        total_ratings = None
+        total_reviews = None
+        
+        # Parse ratings count
+        if ratings_text:
+            # Check if it contains "Ratings" keyword
+            if 'Rating' in ratings_text:
+                ratings_match = re.search(r'([\d,\.]+[kK]?)\s*Rating', ratings_text)
+            else:
+                ratings_match = re.search(r'([\d,\.]+[kK]?)', ratings_text)
+            
+            if ratings_match:
+                rating_str = ratings_match.group(1).replace(',', '')
+                if 'k' in rating_str.lower():
+                    total_ratings = int(float(rating_str.replace('k', '').replace('K', '')) * 1000)
+                else:
+                    total_ratings = int(float(rating_str))
+        
+        # Parse reviews count - Try multiple sources
+        if reviews_text:
+            # Check if it contains "Reviews" keyword
+            if 'Review' in reviews_text:
+                reviews_match = re.search(r'([\d,\.]+[kK]?)\s*Review', reviews_text)
+            else:
+                reviews_match = re.search(r'([\d,\.]+[kK]?)', reviews_text)
+            
+            if reviews_match:
+                review_str = reviews_match.group(1).replace(',', '')
+                if 'k' in review_str.lower():
+                    total_reviews = int(float(review_str.replace('k', '').replace('K', '')) * 1000)
+                else:
+                    total_reviews = int(float(review_str))
+        
+        # If reviews not found separately, search in the combined ratings section
+        if not total_reviews and ratings_section_text:
+            # Look for patterns like "Customer Reviews ( 486 )", "486 Reviews", "2.8k Reviews", etc.
+            reviews_match = re.search(r'Customer Reviews\s*\(\s*([\d,\.]+[kK]?)\s*\)', ratings_section_text)
+            if not reviews_match:
+                reviews_match = re.search(r'([\d,\.]+[kK]?)\s*Review', ratings_section_text)
+            
+            if reviews_match:
+                review_str = reviews_match.group(1).replace(',', '')
+                if 'k' in review_str.lower():
+                    total_reviews = int(float(review_str.replace('k', '').replace('K', '')) * 1000)
+                else:
+                    total_reviews = int(float(review_str))
+        
+        # Also check if ratings text has both (format: "2.8k Ratings & 486 Reviews")
+        if not total_reviews and ratings_text and 'Review' in ratings_text:
+            reviews_match = re.search(r'&\s*([\d,\.]+[kK]?)\s*Review', ratings_text)
+            if reviews_match:
+                review_str = reviews_match.group(1).replace(',', '')
+                if 'k' in review_str.lower():
+                    total_reviews = int(float(review_str.replace('k', '').replace('K', '')) * 1000)
+                else:
+                    total_reviews = int(float(review_str))
+        
+        # Availability
+        images = []
+        
+        # Method 1: Standard image grid
+        img_srcs = response.css("div.image-grid-image img::attr(src), div.image-grid-image img::attr(data-src)").getall()
+        images.extend(img_srcs)
+        
+        # Method 2: Picture elements
+        picture_srcs = response.css("picture img::attr(src), picture source::attr(srcset)").getall()
+        images.extend(picture_srcs)
+        
+        # Method 3: Any images in image containers
+        container_imgs = response.css(".image-grid-container img::attr(src), .image-grid-container img::attr(data-src)").getall()
+        images.extend(container_imgs)
+        
+        # Method 4: Style backgrounds
+        style_imgs = response.css("[style*='background-image']::attr(style)").getall()
+        for style in style_imgs:
+            url_match = re.search(r'url\(["\']?(.*?)["\']?\)', style)
+            if url_match:
+                images.append(url_match.group(1))
+        
+        # Clean and deduplicate images, prioritize larger sizes
+        cleaned_images = []
+        for img in images:
+            if img and 'http' in img:
+                # Clean srcset format (remove size descriptors)
+                img_url = img.split(' ')[0] if ' ' in img else img
+                
+                # Upgrade to higher quality - Myntra image URLs pattern
+                # Replace small dimensions with larger ones
+                img_url = re.sub(r'/(\d+)x(\d+)/', '/1080x1440/', img_url)  # Standard product images
+                img_url = re.sub(r'/w_(\d+),h_(\d+)/', '/w_1080,h_1440/', img_url)  # Alternative format
+                
+                # Filter out known thumbnails
+                if not any(thumb in img_url for thumb in ['150x150', '200x200', '50x50', '125x125']):
+                    if img_url not in cleaned_images:
+                        cleaned_images.append(img_url)
+        
+        images = cleaned_images
+        
+        self.logger.info(f"Found {len(images)} images")
+        
+        # Description - Try multiple selectors
+        description_parts = []
+        
+        # Method 1: Product description content
+        desc1 = response.css("div.pdp-product-description-content p::text, div.pdp-product-description-content::text").getall()
+        description_parts.extend(desc1)
+        
+        # Method 2: Description section
+        desc2 = response.css("div.pdp-description-content::text, div.pdp-description-content p::text").getall()
+        description_parts.extend(desc2)
+        
+        # Method 3: Product details
+        desc3 = response.css(".pdp-productDescriptorsContainer p::text, .pdp-productDescriptorsContainer div::text").getall()
+        description_parts.extend(desc3)
+        
+        # Method 4: Any description divs
+        desc4 = response.css("[class*='description'] p::text, [class*='Description'] p::text").getall()
+        description_parts.extend(desc4)
+        
+        # Clean and join
+        description = " ".join([d.strip() for d in description_parts if d.strip() and len(d.strip()) > 10])
+        
+        self.logger.info(f"Description length: {len(description)} characters")
+        
+        # Specifications
+        specs = {}
+        spec_items = response.css("div.index-row")
+        for item in spec_items:
+            key = item.css("div.index-rowKey::text").get()
+            value = item.css("div.index-rowValue::text").get()
+            if key and value:
+                specs[key.strip()] = value.strip()
+        
+        # Sizes
+        sizes = response.css("button.size-buttons-size-button p::text").getall()
+        sizes = [s.strip() for s in sizes if s.strip()]
+        
+        # Colors
+        colors = []
+        
+        # Reviews
+        reviews = []
+        review_containers = response.css("div.user-review-main, div.detailed-reviews-userReviewsContainer")
+        
+        for review in review_containers:
+            review_title = review.css("div.user-review-title::text, div.user-review-reviewTitle::text").get()
+            rating_elem = review.css("div.user-review-rating::text, span.user-review-rating::text").get()
+            review_text = review.css("div.user-review-reviewTextWrapper::text, div.user-review-commentText::text").get()
+            author = review.css("div.user-review-left::text, div.user-review-reviewerName::text").get()
+            
+            if review_text and len(review_text.strip()) > 10:
+                reviews.append({
+                    "title": review_title.strip() if review_title else None,
+                    "rating": rating_elem.strip() if rating_elem else None,
+                    "text": review_text.strip(),
+                    "author": author.strip() if author else "Anonymous",
+                    "verified_purchase": True
+                })
+        
+        # Log review findings
+        if total_reviews:
+            self.logger.info(f"✅ Total reviews: {total_reviews} | Scraped samples: {len(reviews)}")
+            if len(reviews) < 10 and total_reviews >= 10:
+                self.logger.warning(f"⚠ Only {len(reviews)} reviews scraped. Myntra loads reviews dynamically. Consider implementing API-based review fetching for more reviews.")
+        else:
+            self.logger.info(f"Found {len(reviews)} reviews on product page (total count not available)")
+        
+        return {
+            "title": title,
+            "brand": brand,
+            "price": price,
+            "price_numeric": price_numeric,
+            "original_price": original_price,
+            "discount": discount,
+            "availability": availability,
+            "rating": float(rating) if rating else None,
+            "total_reviews": total_reviews,
+            "total_ratings": total_ratings,
+            "images": images,
+            "description": description,
+            "specifications": specs,
+            "sizes": sizes,
+            "colors": colors,
+            "reviews_from_page": reviews
+        }
+
+    def _extract_price(self, price_string):
+        """Extract numeric price from string"""
+        if not price_string:
+            return None
+        try:
+            numeric_str = re.sub(r'[^\d.]', '', str(price_string))
+            return float(numeric_str) if numeric_str else None
+        except:
+            return None
+
+    def errback_handler(self, failure):
+        self.logger.error(f"❌ Request failed: {failure}")
