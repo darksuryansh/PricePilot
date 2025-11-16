@@ -1,4 +1,4 @@
-# 🛍️ Review Lens - AI-Powered Price Tracker & Review Analyzer
+# 🛍️ Price Pilot - AI-Powered Price Tracker & Review Analyzer
 
 An intelligent e-commerce platform that tracks product prices across Amazon, Flipkart, Myntra, and Meesho while providing AI-powered review analysis and insights using Google Gemini.
 
@@ -65,8 +65,8 @@ An intelligent e-commerce platform that tracks product prices across Amazon, Fli
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/darksuryansh/Review-Lens.git
-cd Review-Lens
+git clone https://github.com/darksuryansh/PricePilot.git
+cd price_tracker
 ```
 
 ### 2. Backend Setup
@@ -171,7 +171,7 @@ daily_scrape.bat
 ## 📁 Project Structure
 
 ```
-Review-Lens/
+Price_Tracker/
 ├── app.py                          # Flask backend server
 ├── requirements.txt                # Python dependencies
 ├── .env                           # Environment variables
@@ -286,6 +286,10 @@ This project is licensed under the MIT License.
 For issues and questions:
 - Open an issue on GitHub
 - Check existing documentation in the `/docs` folder
+
+## If Token limit exced 
+phi-3 model run locally and do everything 
+
 
 ## 🚧 Roadmap
 
