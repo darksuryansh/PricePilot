@@ -5,6 +5,8 @@ import { Sparkles, ThumbsUp, ThumbsDown, TrendingUp, TrendingDown, CheckCircle2,
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { PriceTable } from "./PriceTable";
 import { PriceHistoryChart } from "./PriceHistoryChart";
+import { ReviewInsightsDashboard } from "./ReviewInsightsDashboard";
+import { QuestionAnswering } from "./QuestionAnswering";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { useState, useEffect } from "react";
@@ -21,6 +23,8 @@ export function ProductComparisonPage({ product }: ProductComparisonPageProps) {
   const [loading, setLoading] = useState(true);
   const [priceHistory, setPriceHistory] = useState<any>(null);
   const [aiInsights, setAIInsights] = useState<any>(null);
+  const [sentimentData, setSentimentData] = useState<any>(null);
+  const [sentimentLoading, setSentimentLoading] = useState(false);
 
   // Load additional data when component mounts
   useEffect(() => {
@@ -55,6 +59,27 @@ export function ProductComparisonPage({ product }: ProductComparisonPageProps) {
           setAIInsights(normalizedInsights);
         } catch (error) {
           console.log('AI insights not available yet');
+        }
+
+        // Load sentiment analysis (optional)
+        try {
+          setSentimentLoading(true);
+          const sentiment = await api.getSentimentAnalysis(productId);
+          console.log('📊 Sentiment analysis received:', sentiment);
+          setSentimentData(sentiment);
+        } catch (error: any) {
+          console.error('❌ Sentiment analysis error:', error.message);
+          // Set empty sentiment data to show dashboard with message
+          setSentimentData({
+            error: error.message,
+            overall_sentiment: { positive: 0, neutral: 0, negative: 0 },
+            key_topics: [],
+            controversy_score: 0,
+            reliability_score: 0,
+            ai_confidence: 0
+          });
+        } finally {
+          setSentimentLoading(false);
         }
 
       } catch (error: any) {
@@ -822,6 +847,27 @@ export function ProductComparisonPage({ product }: ProductComparisonPageProps) {
             </div>
           </CardContent>
         </Card>
+
+        {/* Review Insights Dashboard */}
+        <div className="animate-fadeIn stagger-6">
+          <ReviewInsightsDashboard
+            productName={(displayProduct as any).title || displayProduct.name || 'Product'}
+            overallSentiment={sentimentData?.overall_sentiment || { positive: 0, neutral: 0, negative: 0 }}
+            keyTopics={sentimentData?.key_topics || []}
+            controversyScore={sentimentData?.controversy_score || 0}
+            reliabilityScore={sentimentData?.reliability_score || 0}
+            aiConfidence={sentimentData?.ai_confidence || 0}
+            loading={sentimentLoading}
+          />
+        </div>
+
+        {/* Question Answering */}
+        <div className="animate-fadeIn stagger-7">
+          <QuestionAnswering
+            productName={(displayProduct as any).title || displayProduct.name || 'Product'}
+            productId={(displayProduct as any)._id || product._id}
+          />
+        </div>
 
         {/* Full Product Specifications */}
         <Card className="border-2 border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm hover:shadow-xl transition-all duration-500 animate-fadeIn stagger-6">

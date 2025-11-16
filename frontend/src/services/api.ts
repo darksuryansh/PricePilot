@@ -170,6 +170,48 @@ export async function getReviewInsights(productId: string): Promise<any> {
   return response.json();
 }
 
+// Get sentiment analysis (using Phi-3 LLM)
+export async function getSentimentAnalysis(productId: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/api/product/${productId}/sentiment-analysis`);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to get sentiment analysis');
+  }
+
+  return response.json();
+}
+
+// Get suggested questions for product Q&A
+export async function getSuggestedQuestions(productId: string): Promise<{ questions: string[] }> {
+  const response = await fetch(`${API_BASE_URL}/api/product/${productId}/suggested-questions`);
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to get suggested questions');
+  }
+
+  return response.json();
+}
+
+// Ask a question about a product
+export async function askProductQuestion(productId: string, question: string): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/api/product/${productId}/ask-question`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ question }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to answer question');
+  }
+
+  return response.json();
+}
+
 // Health check
 export async function healthCheck(): Promise<{ status: string; database: string }> {
   const response = await fetch(`${API_BASE_URL}/api/health`);

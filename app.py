@@ -14,6 +14,7 @@ import jwt
 from functools import wraps
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+import requests
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,6 +23,10 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
+
+# Configure Grok API (xAI)
+GROK_API_KEY = os.getenv('GROK_API_KEY')
+GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
 # Initialize the Flask application
 app = Flask(__name__)
@@ -1301,37 +1306,68 @@ def analyze_reviews(reviews, product, price_stats):
             return generate_basic_insights(reviews, product, price_stats)
         
         # Create comprehensive prompt for Gemini
-        reviews_combined = "\n\n".join(review_texts[:15])  # Limit to prevent token overflow
+        reviews_combined = "\n\n".join(review_texts[:20])  # Use more reviews for better analysis
         
-        prompt = f"""Analyze the following product and its customer reviews to provide comprehensive buying insights:
+        # Get product features/specifications if available
+        product_features = product.get('features', [])
+        features_text = ""
+        if product_features:
+            features_text = "\n\nProduct Features/Specifications:\n"
+            for feature in product_features[:10]:
+                if isinstance(feature, dict):
+                    for key, value in feature.items():
+                        features_text += f"- {key}: {value}\n"
+                else:
+                    features_text += f"- {feature}\n"
+        
+        prompt = f"""You are an expert product analyst. Analyze this product comprehensively based on customer reviews, ratings, specifications, and price.
 
 Product Name: {product_name}
 Current Price: ₹{current_price:,.0f}
 Average Rating: {product_rating:.1f}/5 stars
 Total Reviews: {review_count}
+{features_text}
 
 Customer Reviews:
 {reviews_combined}
 
-Please provide a detailed analysis in the following JSON format:
+Provide a GENUINE, HONEST analysis in JSON format. Be critical and balanced - don't just praise everything.
+
+IMPORTANT SCORING GUIDELINES for recommendation_score (1-10):
+- Consider: Quality , Value for Money,, Reliability , Brand value , hype of product, durability, usability, 
+- 9-10: Outstanding product, highly recommended, minimal issues
+- 7-8: Good product, worth buying, minor flaws acceptable
+- 6: Okay product , generally acceptable with some issues, issue face by some people
+- 5: Average product significant issues,consider alternatives ,not acceptable and notable drawbacks
+- 3-4: Below average, many problems, NOT good 
+- 1-2: Poor quality, not recommended, major problems
+
+
+TARGET BUYER GUIDELINES:
+- Identify 3-5 different audience segments this product suits
+- Be specific: "Budget-conscious students and young professionals", "Fitness enthusiasts and gym-goers", etc.
+- Consider use cases, lifestyle, budget, and needs
+- Include both primary and secondary audiences but do not overexplain 
+
+JSON Format:
 {{
-  "summary": "A comprehensive 2-3 sentence summary of the product based on reviews, highlighting overall customer sentiment and key value propositions",
-  "pros": ["List 4-6 specific positive aspects mentioned by customers"],
-  "cons": ["List 3-5 specific concerns or drawbacks mentioned by customers"],
-  "recommendation_score": "A score from 1-10 based on overall quality, value, and customer satisfaction",
-  "buy_recommendation": "Should I buy this product? Provide a clear YES or NO recommendation",
-  "buy_reasoning": "2-3 sentences explaining why you recommend buying or not buying this product, considering price, quality, reviews, and value for money",
-  "target_buyer": "Who is this product best suited for? (e.g., 'budget-conscious buyers', 'professionals', 'students')",
-  "key_considerations": ["2-3 important factors to consider before purchasing"]
+  "summary": "Honest 2-3 sentence summary highlighting BOTH strengths and weaknesses based on actual review patterns",
+  "pros": ["4-6 specific positive aspects with details from reviews - avoid generic praise"],
+  "cons": ["3-5 genuine concerns and drawbacks mentioned by multiple customers - be honest about problems"],
+  "recommendation_score": <1-10 integer based on guidelines above ->,
+  "buy_recommendation": "Stongly YES/ YES/ MAYBE NOT/ NO/ Stongly NO - be honest based on the data",
+  "buy_reasoning": "main points explaining recommendation based on review patterns, price-quality ratio, and recurring issues in 1-2  lines",
+  "target_buyer": "provide 3-5 specific audience  who would benefit from this product and suited for  "(eg. gym-goers, tech enthusiasts, camera enthusiasts, physical therapists, Non-technical , general people , budget buyers etc.) mension 2 -3 audience ",
+  "key_considerations": ["3-4 critical factors buyers MUST consider - include warnings about common issues"]
 }}
 
-Be honest, specific, and base your analysis strictly on the review data provided. Focus on recurring themes in customer feedback."""
+Be honest and critical. If the product has significant issues in reviews, reflect that accurately. give your honest opinion like you are the best analyst and you know all about that product ."""
 
         # Initialize Gemini model
-        model = genai.GenerativeModel('models/gemini-2.5-pro')
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
         
         # Generate AI insights
-        print(f"🤖 Generating AI insights for {product_name}...")
+        print(f"🤖 Generating genuine AI insights for {product_name}...")
         response = model.generate_content(prompt)
         
         # Parse response
@@ -1349,7 +1385,17 @@ Be honest, specific, and base your analysis strictly on the review data provided
         
         ai_analysis = json.loads(response_text)
         
-        print(f"✓ AI insights generated successfully")
+        # Parse recommendation score - handle formats like "8" or "8/10"
+        rec_score = ai_analysis.get('recommendation_score', 7)
+        if isinstance(rec_score, str):
+            # Extract number from "8/10" or "8"
+            rec_score = rec_score.split('/')[0].strip()
+        try:
+            rec_score = int(rec_score)
+        except (ValueError, TypeError):
+            rec_score = 7  # Default fallback
+        
+        print(f"✓ AI insights generated successfully - Score: {rec_score}/10")
         
         # Format the response
         return {
@@ -1357,7 +1403,7 @@ Be honest, specific, and base your analysis strictly on the review data provided
             'pros': ai_analysis.get('pros', []),
             'cons': ai_analysis.get('cons', []),
             'recommendation': ai_analysis.get('buy_reasoning', ''),
-            'recommendation_score': int(ai_analysis.get('recommendation_score', 7)),
+            'recommendation_score': rec_score,
             'buy_recommendation': ai_analysis.get('buy_recommendation', 'MAYBE'),
             'target_buyer': ai_analysis.get('target_buyer', 'General consumers'),
             'key_considerations': ai_analysis.get('key_considerations', []),
@@ -1552,7 +1598,7 @@ Key topics should focus on: Battery Life, Build Quality, Camera Quality, Price/V
 Return ONLY valid JSON, no additional text."""
 
         # Call Gemini API
-        model = genai.GenerativeModel('models/gemini-2.5-pro')
+        model = genai.GenerativeModel('models/gemini-2.0-flash-lite')
         response = model.generate_content(prompt)
         
         # Parse response
@@ -1587,6 +1633,265 @@ Return ONLY valid JSON, no additional text."""
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Failed to generate insights: {str(e)}'}), 500
+
+@app.route('/api/product/<product_id>/sentiment-analysis', methods=['GET'])
+def get_sentiment_analysis(product_id):
+    """Generate advanced sentiment analysis using Phi-3 LLM model"""
+    try:
+        # Determine ID field
+        product = products_collection.find_one({'asin': product_id})
+        id_field = 'asin' if product else 'product_id'
+        
+        if not product:
+            product = products_collection.find_one({'product_id': product_id})
+        
+        if not product:
+            return jsonify({'error': 'Product not found'}), 404
+        
+        # Get all reviews for this product
+        reviews = list(reviews_collection.find({
+            id_field: product_id
+        }).sort('scraped_at', -1).limit(100))  # Analyze up to 100 recent reviews
+        
+        product_name = product.get('title') or product.get('name', 'Product')
+        
+        if not reviews:
+            # Return empty sentiment data instead of error
+            return jsonify({
+                'product_id': product_id,
+                'product_name': product_name,
+                'overall_sentiment': {'positive': 0, 'neutral': 0, 'negative': 0},
+                'key_topics': [],
+                'controversy_score': 0,
+                'reliability_score': 0,
+                'ai_confidence': 0,
+                'total_reviews_analyzed': 0,
+                'generated_at': datetime.now().isoformat(),
+                'message': 'No reviews available for analysis'
+            })
+        
+        # Prepare review texts for analysis
+        review_texts = []
+        ratings = []
+        for review in reviews:
+            # Try both 'text' and 'review_text' fields
+            text = review.get('text', '') or review.get('review_text', '')
+            rating = review.get('rating', '')
+            if text:
+                review_texts.append(text)
+                ratings.append(parse_rating(rating))
+        
+        print(f"📊 Extracted {len(review_texts)} review texts from {len(reviews)} reviews")
+        
+        if not review_texts:
+            print("⚠️ No review texts found!")
+            # Return empty sentiment data instead of error
+            return jsonify({
+                'product_id': product_id,
+                'product_name': product_name,
+                'overall_sentiment': {'positive': 0, 'neutral': 0, 'negative': 0},
+                'key_topics': [],
+                'controversy_score': 0,
+                'reliability_score': 0,
+                'ai_confidence': 0,
+                'total_reviews_analyzed': 0,
+                'generated_at': datetime.now().isoformat(),
+                'message': 'No review text available for analysis'
+            })
+        
+        # Limit to first 30 reviews for efficiency
+        sample_reviews = review_texts[:30]
+        sample_ratings = ratings[:30]
+        
+        # Prepare prompt for Phi-3 model
+        reviews_text = "\n\n".join([f"Review {i+1} (Rating: {sample_ratings[i]}/5):\n{text}" 
+                                     for i, text in enumerate(sample_reviews)])
+        
+        prompt = f"""Analyze these customer reviews for {product_name} and provide sentiment insights.
+
+{reviews_text}
+
+Based on these reviews, provide:
+1. Overall sentiment breakdown (positive %, neutral %, negative %)
+2. Key topics mentioned (e.g., Battery Life, Camera, Build Quality, Price, Performance, Display)
+3. For each topic: sentiment score (-1 to 1), number of mentions
+4. Controversy score (0-100): How much disagreement exists among reviewers
+5. Reliability score (0-100): Based on review depth and authenticity indicators
+6. Your confidence level (0-100) in this analysis
+
+Respond in JSON format ONLY:
+{{
+    "overall_sentiment": {{"positive": 70, "neutral": 20, "negative": 10}},
+    "key_topics": [
+        {{"topic": "Battery Life", "sentiment": 0.7, "mentions": 15}},
+        {{"topic": "Camera Quality", "sentiment": 0.5, "mentions": 12}}
+    ],
+    "controversy_score": 35,
+    "reliability_score": 82,
+    "ai_confidence": 88
+}}"""
+
+        try:
+            # Use Gemini for sentiment analysis
+            if not GEMINI_API_KEY:
+                print("⚠️ Gemini API key not configured, using fallback analysis")
+                fallback_insights = generate_fallback_sentiment(sample_reviews, sample_ratings, product_name, product_id)
+                return jsonify(fallback_insights)
+            
+            # Use Gemini 2.0 Flash for better rate limits and stability
+            model = genai.GenerativeModel('models/gemini-2.0-flash')
+            print(f"🤖 Generating sentiment analysis with Gemini 2.0 Flash for {product_name}...")
+            response = model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            # Clean up response
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.startswith('```'):
+                response_text = response_text[3:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+            
+            # Parse JSON
+            insights_data = json.loads(response_text)
+            
+            # Add metadata
+            insights_data['product_id'] = product_id
+            insights_data['product_name'] = product_name
+            insights_data['total_reviews_analyzed'] = len(sample_reviews)
+            insights_data['generated_at'] = datetime.now().isoformat()
+            
+            print(f"✅ Sentiment analysis completed successfully with Gemini 1.5 Flash")
+            return jsonify(insights_data)
+            
+        except json.JSONDecodeError as e:
+            print(f"JSON Parse Error: {str(e)}")
+            print(f"Response text: {response_text if 'response_text' in locals() else 'N/A'}")
+            # Fallback on parse error
+            fallback_insights = generate_fallback_sentiment(sample_reviews, sample_ratings, product_name, product_id)
+            return jsonify(fallback_insights)
+        except Exception as e:
+            print(f"Error with Gemini: {str(e)}")
+            # Fallback on any error
+            fallback_insights = generate_fallback_sentiment(sample_reviews, sample_ratings, product_name, product_id)
+            return jsonify(fallback_insights)
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON Parse Error: {str(e)}")
+        # Fallback on parse error
+        fallback_insights = generate_fallback_sentiment(sample_reviews, sample_ratings, product_name, product_id)
+        return jsonify(fallback_insights)
+    except Exception as e:
+        print(f"Error generating sentiment analysis: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to generate sentiment analysis: {str(e)}'}), 500
+
+def generate_fallback_sentiment(review_texts, ratings, product_name, product_id):
+    """Generate basic sentiment analysis without AI model"""
+    # Calculate sentiment distribution from ratings
+    total = len(ratings)
+    positive = sum(1 for r in ratings if r >= 4) / total * 100
+    negative = sum(1 for r in ratings if r <= 2) / total * 100
+    neutral = 100 - positive - negative
+    
+    # Extract common topics using keyword matching
+    topics_keywords = {
+        "Battery Life": ["battery", "charge", "charging", "power"],
+        "Build Quality": ["build", "quality", "material", "sturdy", "durable"],
+        "Camera Quality": ["camera", "photo", "picture", "video"],
+        "Price": ["price", "value", "expensive", "cheap", "cost"],
+        "Performance": ["performance", "speed", "fast", "slow", "lag"],
+        "Display": ["display", "screen", "brightness", "color"]
+    }
+    
+    key_topics = []
+    combined_text = " ".join(review_texts).lower()
+    
+    for topic, keywords in topics_keywords.items():
+        mentions = sum(combined_text.count(keyword) for keyword in keywords)
+        if mentions > 0:
+            # Simple sentiment calculation
+            sentiment_score = (positive - negative) / 100
+            key_topics.append({
+                "topic": topic,
+                "sentiment": round(sentiment_score, 2),
+                "mentions": mentions
+            })
+    
+    # Calculate controversy score (standard deviation of ratings)
+    import statistics
+    controversy = 0
+    if len(ratings) > 1:
+        std_dev = statistics.stdev(ratings)
+        controversy = int(min(std_dev * 25, 100))  # Scale to 0-100
+    
+    # Calculate reliability score based on review quality indicators
+    reliability = 50  # Base score
+    
+    # Factor 1: Review length (longer reviews = more reliable)
+    avg_length = sum(len(text) for text in review_texts) / len(review_texts)
+    if avg_length > 200:
+        reliability += 20
+    elif avg_length > 100:
+        reliability += 10
+    
+    # Factor 2: Rating distribution (consistent ratings = more reliable)
+    rating_consistency = 100 - controversy
+    reliability += int(rating_consistency * 0.2)  # Add up to 20 points
+    
+    # Factor 3: Number of reviews (more reviews = more reliable)
+    if total >= 20:
+        reliability += 15
+    elif total >= 10:
+        reliability += 10
+    elif total >= 5:
+        reliability += 5
+    
+    reliability = min(reliability, 100)  # Cap at 100
+    
+    # Calculate AI confidence based on data quality
+    confidence = 40  # Base score for fallback mode
+    
+    # Factor 1: Sample size
+    if total >= 30:
+        confidence += 30
+    elif total >= 15:
+        confidence += 20
+    elif total >= 5:
+        confidence += 10
+    
+    # Factor 2: Review detail
+    if avg_length > 150:
+        confidence += 20
+    elif avg_length > 75:
+        confidence += 15
+    elif avg_length > 30:
+        confidence += 10
+    
+    # Factor 3: Rating spread (diverse ratings = better confidence)
+    unique_ratings = len(set(ratings))
+    confidence += min(unique_ratings * 5, 15)
+    
+    confidence = min(confidence, 100)  # Cap at 100
+    
+    return {
+        "overall_sentiment": {
+            "positive": round(positive),
+            "neutral": round(neutral),
+            "negative": round(negative)
+        },
+        "key_topics": sorted(key_topics, key=lambda x: x['mentions'], reverse=True)[:6],
+        "controversy_score": controversy,
+        "reliability_score": reliability,
+        "ai_confidence": confidence,
+        "product_id": product_id,
+        "product_name": product_name,
+        "total_reviews_analyzed": len(review_texts),
+        "generated_at": datetime.now().isoformat(),
+        "fallback_mode": True
+    }
 
 # API route for chatbot queries
 @app.route('/api/chatbot', methods=['POST'])
@@ -1685,10 +1990,10 @@ Guidelines:
 
 Response (be natural and conversational):"""
 
-        # Call Gemini API
-        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        # Use Gemini 2.0 Flash for chatbot
+        print(f"🤖 Calling Gemini 2.0 Flash-lite for chatbot...")
+        model = genai.GenerativeModel('models/gemini-2.0-flash-lite')
         response = model.generate_content(prompt)
-        
         ai_response = response.text.strip()
         
         print(f"💬 Chatbot query: {query[:50]}...")
@@ -1710,6 +2015,248 @@ Response (be natural and conversational):"""
             'response': "I'm having trouble processing that right now. Could you try rephrasing your question? 🤔",
             'ai_generated': False
         }), 200
+
+# API route for product Q&A - Suggested Questions
+@app.route('/api/product/<product_id>/suggested-questions', methods=['GET'])
+def get_suggested_questions(product_id):
+    """Generate suggested questions based on product reviews"""
+    try:
+        print(f"\n📝 Generating suggested questions for product: {product_id}")
+        
+        # Get product details - try multiple ID fields
+        from bson import ObjectId
+        product = None
+        try:
+            # Try as ObjectId first
+            product = products_collection.find_one({"_id": ObjectId(product_id)})
+        except:
+            # Try as string ID
+            product = products_collection.find_one({"_id": product_id})
+        
+        if not product:
+            # Try other ID fields
+            product = products_collection.find_one({"$or": [
+                {"asin": product_id},
+                {"product_id": product_id}
+            ]})
+        
+        if not product:
+            return jsonify({"error": "Product not found"}), 404
+        
+        product_name = product.get('name') or product.get('title', 'Product')
+        # Get the actual product ID used in reviews collection (reviews use 'asin' field)
+        review_lookup_id = product.get('asin') or str(product.get('_id')) or product.get('product_id') or product_id
+        
+        # Get reviews - try both 'asin' and 'product_id' fields
+        reviews = list(reviews_collection.find({"$or": [{"asin": review_lookup_id}, {"product_id": review_lookup_id}]}).limit(30))
+        
+        if not reviews:
+            # Return default questions if no reviews
+            return jsonify({
+                "questions": [
+                    "Is this product worth the price?",
+                    "How is the overall quality?",
+                    "Would you recommend this?",
+                    "What are the main features?"
+                ]
+            })
+        
+        # Extract review texts and ratings
+        review_texts = []
+        for review in reviews:
+            text = review.get('text') or review.get('review_text', '')
+            if text and len(text.strip()) > 10:
+                review_texts.append(text.strip())
+        
+        # Sample reviews for analysis
+        sample_reviews = review_texts[:15]
+        
+        # Create prompt for Gemini to generate questions
+        prompt = f"""Based on these product reviews for "{product_name}", generate 6 insightful questions that potential buyers would want to ask.
+
+Reviews:
+{chr(10).join([f"- {review[:200]}..." for review in sample_reviews])}
+
+Generate one line concise questions that:
+1. Address common concerns mentioned in reviews
+2. Focus on product features, performance, quality, durability
+3. Are specific to what reviewers discussed
+4. Help buyers make informed decisions
+
+Return ONLY a JSON array of 6 questions:
+{{"questions": ["question 1", "question 2", "question 3", "question 4", "question 5", "question 6"]}}"""
+
+        # Call Gemini API
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        # Parse JSON
+        if response_text.startswith('```json'):
+            response_text = response_text[7:]
+        if response_text.startswith('```'):
+            response_text = response_text[3:]
+        if response_text.endswith('```'):
+            response_text = response_text[:-3]
+        
+        result = json.loads(response_text.strip())
+        
+        print(f"✅ Generated {len(result.get('questions', []))} suggested questions")
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"❌ Error generating questions: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Fallback questions
+        return jsonify({
+            "questions": [
+                "How is the overall quality?",
+                "Is it worth the price?",
+                "How durable is this product?",
+                "What do users like most?",
+                "Are there any common issues?",
+                "Would you recommend this?"
+            ]
+        })
+
+# API route for product Q&A - Answer Question
+@app.route('/api/product/<product_id>/ask-question', methods=['POST'])
+def answer_question(product_id):
+    """Answer a specific question about the product using reviews"""
+    try:
+        data = request.json
+        question = data.get('question', '').strip()
+        
+        if not question:
+            return jsonify({"error": "Question is required"}), 400
+        
+        print(f"\n❓ Answering question for product {product_id}: {question}")
+        
+        # Get product details - try multiple ID fields
+        from bson import ObjectId
+        product = None
+        try:
+            # Try as ObjectId first
+            product = products_collection.find_one({"_id": ObjectId(product_id)})
+        except:
+            # Try as string ID
+            product = products_collection.find_one({"_id": product_id})
+        
+        if not product:
+            # Try other ID fields
+            product = products_collection.find_one({"$or": [
+                {"asin": product_id},
+                {"product_id": product_id}
+            ]})
+        
+        if not product:
+            return jsonify({"error": "Product not found"}), 404
+        
+        product_name = product.get('name') or product.get('title', 'Product')
+        # Get the actual product ID used in reviews collection (reviews use 'asin' field)
+        review_lookup_id = product.get('asin') or str(product.get('_id')) or product.get('product_id') or product_id
+        
+        # Get reviews - try both 'asin' and 'product_id' fields
+        reviews = list(reviews_collection.find({"$or": [{"asin": review_lookup_id}, {"product_id": review_lookup_id}]}))
+        
+        if not reviews:
+            return jsonify({
+                "question": question,
+                "answer": f"There are no reviews available yet for {product_name} to answer this question.",
+                "confidence": 0,
+                "supportingData": {
+                    "positivePercentage": 0,
+                    "totalMentions": 0,
+                    "commonThemes": [],
+                    "warnings": ["No review data available"]
+                },
+                "verdict": "Insufficient data"
+            })
+        
+        # Extract review texts and ratings
+        review_texts = []
+        ratings = []
+        for review in reviews:
+            text = review.get('text') or review.get('review_text', '')
+            if text and len(text.strip()) > 10:
+                review_texts.append(text.strip())
+            rating = review.get('rating', 0)
+            if rating:
+                try:
+                    # Convert rating to float (handle both string and numeric)
+                    ratings.append(float(rating))
+                except (ValueError, TypeError):
+                    pass
+        
+        # Sample reviews for analysis
+        sample_reviews = review_texts[:25]
+        avg_rating = sum(ratings) / len(ratings) if ratings else 0
+        
+        # Create prompt for Gemini
+        prompt = f"""You are analyzing product reviews for "{product_name}" to answer a buyer's question.
+
+Question: {question}
+
+Product Average Rating: {avg_rating:.1f}/5 ({len(reviews)} reviews)
+
+Reviews:
+{chr(10).join([f"- {review[:300]}" for review in sample_reviews])}
+
+Analyze the reviews and provide a comprehensive answer in JSON format:
+{{
+  "answer": "Direct answer to the question based on review analysis (2-3 sentences)",
+  "confidence": 85,  // 0-100 score based on data quality and relevance
+  "supportingData": {{
+    "positivePercentage": 75,  // % of relevant reviews that are positive about this aspect
+    "totalMentions": 28,  // Number of reviews mentioning this topic
+    "commonThemes": ["theme 1", "theme 2", "theme 3"],  // 3-4 common points from reviews
+    "warnings": ["warning 1", "warning 2"]  // Optional: concerns mentioned (if any)
+  }},
+  "verdict": "Brief conclusion (5-8 words)"
+}}
+
+Be honest and data-driven. If reviews don't address the question well, say so and lower confidence.
+Return ONLY valid JSON."""
+
+        # Call Gemini API
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        response_text = response.text.strip()
+        
+        # Parse JSON
+        if response_text.startswith('```json'):
+            response_text = response_text[7:]
+        if response_text.startswith('```'):
+            response_text = response_text[3:]
+        if response_text.endswith('```'):
+            response_text = response_text[:-3]
+        
+        result = json.loads(response_text.strip())
+        result['question'] = question
+        
+        print(f"✅ Generated answer with {result.get('confidence', 0)}% confidence")
+        return jsonify(result)
+        
+    except Exception as e:
+        print(f"❌ Error answering question: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Fallback response
+        return jsonify({
+            "question": question,
+            "answer": f"Based on available reviews, we're analyzing feedback to answer your question about {product_name}. Please try again.",
+            "confidence": 50,
+            "supportingData": {
+                "positivePercentage": 60,
+                "totalMentions": len(reviews) if 'reviews' in locals() else 0,
+                "commonThemes": ["General positive feedback", "Mixed experiences"],
+                "warnings": ["Limited analysis available"]
+            },
+            "verdict": "Analysis in progress"
+        })
 
 # This allows you to run the app directly
 if __name__ == '__main__':
