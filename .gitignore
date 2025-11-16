@@ -116,6 +116,7 @@ credentials.json
 .local/
 local_*.py
 dev_*.py
+
 price_scraper/price_scraper/spiders/amazon.py
 price_scraper/price_scraper/spiders/flipkart.py
 price_scraper/price_scraper/spiders/myntra.py
