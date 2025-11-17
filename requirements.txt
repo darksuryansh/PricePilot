@@ -2,32 +2,35 @@
 Flask==3.0.0
 flask-cors==4.0.0
 
+# Production Server
+gunicorn==23.0.0
+
 # Database
 pymongo==4.6.0
 
 # Web Scraping
 scrapy==2.11.0
-scrapy-playwright==0.0.34
-playwright==1.40.0
+scrapy-playwright==0.0.44
+playwright==1.56.0
 
 # AI/ML APIs
 google-generativeai==0.8.5
+google-api-core==2.28.1
+google-auth==2.43.0
 
 # HTTP Requests
-requests==2.31.0
+requests==2.32.5
 
 # Environment Variables
 python-dotenv==1.0.0
 
 # Authentication & Security
 PyJWT==2.8.0
-Werkzeug==3.0.1
-google-auth==2.25.2
+Werkzeug==3.0.3
 
 # Data Processing
 python-dateutil==2.8.2
 
-# MongoDB Object IDs
-bson==0.5.10
-
-gunicorn-23.0.0
+# Google OAuth dependencies
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
