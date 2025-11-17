@@ -180,7 +180,14 @@ def scrape():
     
     # Construct the Scrapy command as a string for Windows shell
     # Use double quotes to properly escape the URL
-    command_str = f'conda run -n webdev scrapy crawl {spider_name} -a "url={url}"'
+    # Check if we're in a conda environment or on Render (production)
+    import sys
+    is_conda = 'conda' in sys.version or 'Continuum' in sys.version or os.path.exists(os.path.join(sys.prefix, 'conda-meta'))
+    
+    if is_conda and os.name == 'nt':  # Windows with conda
+        command_str = f'conda run -n webdev scrapy crawl {spider_name} -a "url={url}"'
+    else:  # Production (Render) or non-conda environment
+        command_str = f'scrapy crawl {spider_name} -a url="{url}"'
 
     try:
         # Run the Scrapy command
