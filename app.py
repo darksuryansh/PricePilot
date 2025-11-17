@@ -31,8 +31,23 @@ GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 # Initialize the Flask application
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this-in-production')
-# Enable CORS for React frontend - allow all common dev ports
-CORS(app, origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:5173", "http://127.0.0.1:5174"], supports_credentials=True)
+
+# Enable CORS for React frontend - Production and Development
+allowed_origins = [
+    # Production (Update with your actual Vercel URL)
+    "https://*.vercel.app",  # Allows all Vercel deployments
+    # Development
+    "http://localhost:3000", 
+    "http://localhost:3001", 
+    "http://localhost:5173", 
+    "http://localhost:5174", 
+    "http://127.0.0.1:3000", 
+    "http://127.0.0.1:3001", 
+    "http://127.0.0.1:5173", 
+    "http://127.0.0.1:5174"
+]
+
+CORS(app, origins=allowed_origins, supports_credentials=True)
 
 # MongoDB connection
 client = pymongo.MongoClient(os.getenv('MONGODB_URI', 'mongodb://localhost:27017/'))
