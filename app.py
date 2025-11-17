@@ -133,6 +133,22 @@ def extract_product_id(url):
     
     return None, None
 
+# Root route - API Status
+@app.route('/')
+def home():
+    """API status endpoint"""
+    return jsonify({
+        "status": "online",
+        "message": "Price Pilot API is running",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/api/health",
+            "products": "/api/products/recent",
+            "search": "/api/products/search",
+            "documentation": "https://github.com/darksuryansh/PricePilot"
+        }
+    }), 200
+
 # API route to scrape a product
 @app.route('/api/scrape', methods=['POST'])
 def scrape():

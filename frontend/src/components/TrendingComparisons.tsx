@@ -16,8 +16,8 @@ export function TrendingComparisons({ onProductClick }: TrendingComparisonProps)
     const loadRecentProducts = async () => {
       try {
         setLoading(true);
-        const products = await api.getRecentProducts(6); // Get 6 most recent products
-        setRecentProducts(products);
+        const data = await api.getRecentProducts(6); // Get 6 most recent products
+        setRecentProducts(data);
       } catch (error) {
         console.error('Error loading recent products:', error);
         setRecentProducts([]);
