@@ -1,0 +1,68 @@
+# Ignore version control
+.git
+.gitignore
+
+# Ignore Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Ignore virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# Ignore IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore environment files (will be set in Cloud Run)
+.env
+.env.local
+.env.production
+
+# Ignore logs
+*.log
+
+# Ignore test files
+tests/
+test_*.py
+
+# Ignore documentation
+*.md
+docs/
+
+# Ignore frontend (deploy separately)
+frontend/
+
+# Ignore development files
+*.sqlite
+*.db
+
+# Ignore scrapy outputs (except exports)
+price_scraper/*.json
+price_scraper/*.html
+price_scraper/*.jl
+!price_scraper/exports/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore build artifacts
+build/
+dist/
+*.egg-info/
+
+# Keep necessary files
+!requirements.txt
+!gunicorn.conf.py
+!Dockerfile
+!app.py
+!migrate_data.py

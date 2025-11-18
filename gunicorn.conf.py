@@ -1,13 +1,13 @@
 # Gunicorn configuration for production
 import os
 
-# Binding
-bind = f"0.0.0.0:{os.environ.get('PORT', '10000')}"
+# Binding - Cloud Run uses PORT env variable (default 8080)
+bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
 
 # Worker configuration
-workers = 1  # Free tier - keep it light
+workers = 1  # Cloud Run - single worker for free tier
 worker_class = "sync"
-timeout = 120  # 2 minutes for AI operations (Gemini can be slow)
+timeout = 200  # 3 minutes for AI operations (Gemini can be slow)
 graceful_timeout = 30
 keepalive = 5
 

@@ -200,6 +200,8 @@ def scrape():
             cwd=scrapy_project_path, 
             shell=True,
             capture_output=True,
+
+
             text=True,
             timeout=200  # 3 minute timeout
         )
@@ -2044,14 +2046,23 @@ Response (be natural and conversational):"""
         })
         
     except Exception as e:
-        print(f"❌ Chatbot error: {str(e)}")
+        error_msg = str(e)
+        print(f"❌ Chatbot error: {error_msg}")
         import traceback
         traceback.print_exc()
         
-        # Fallback response
+        # Smart fallback response based on error type
+        if '429' in error_msg or 'quota' in error_msg.lower() or 'rate limit' in error_msg.lower():
+            fallback = "I'm experiencing high demand right now 😅 The AI service has reached its rate limit. Please try again in a few minutes, or ask me simpler questions about the product!"
+        elif 'timeout' in error_msg.lower():
+            fallback = "That's taking longer than expected to process. Could you try a simpler question? 🤔"
+        else:
+            fallback = "I'm having trouble processing that right now. Could you try rephrasing your question? 🤔"
+        
         return jsonify({
-            'response': "I'm having trouble processing that right now. Could you try rephrasing your question? 🤔",
-            'ai_generated': False
+            'response': fallback,
+            'ai_generated': False,
+            'error_type': 'rate_limit' if '429' in error_msg else 'general'
         }), 200
 
 # API route for product Q&A - Suggested Questions
