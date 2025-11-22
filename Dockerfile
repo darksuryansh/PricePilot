@@ -49,8 +49,13 @@ COPY . .
 RUN mkdir -p /app/price_scraper
 
 # Expose port (Cloud Run will set PORT env variable)
-ENV PORT=8080
-EXPOSE 8080
+# ENV PORT=8080
+# EXPOSE 8080
+
+# for hugging face spaces
+ENV PORT=7860
+EXPOSE 7860
+
 
 # Use gunicorn with config
 CMD gunicorn --config gunicorn.conf.py app:app

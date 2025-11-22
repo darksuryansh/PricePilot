@@ -1,3 +1,14 @@
+---
+title: Price Pilot - AI Price Tracker
+emoji: 🛍️
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+license: mit
+app_port: 8080
+---
+
 # 🛍️ Price Pilot - AI-Powered Price Tracker & Review Analyzer
 
 An intelligent e-commerce platform that tracks product prices across Amazon, Flipkart, Myntra, and Meesho while providing AI-powered review analysis and insights using Google Gemini.

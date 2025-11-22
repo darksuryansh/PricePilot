@@ -2,7 +2,10 @@
 import os
 
 # Binding - Cloud Run uses PORT env variable (default 8080)
-bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
+# bind = f"0.0.0.0:{os.environ.get('PORT', '8080')}"
+
+# for huggingface space
+bind = f"0.0.0.0:{os.environ.get('PORT', '7860')}"
 
 # Worker configuration
 workers = 1  # Cloud Run - single worker for free tier
