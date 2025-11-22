@@ -16,7 +16,8 @@ from itemadapter import ItemAdapter
 
 # price_scraper/pipelines.py
 
-# import pymongo
+import os
+import pymongo
 
 # class MongoPipeline:
 
@@ -81,8 +82,9 @@ from datetime import datetime
 
 class MongoPipeline:
     def __init__(self):
-        # 1. Connect to the MongoDB server
-        self.client = pymongo.MongoClient('mongodb://localhost:27017/')
+        # 1. Connect to the MongoDB server using environment variable
+        mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
+        self.client = pymongo.MongoClient(mongodb_uri)
         
         # 2. Select the database
         self.db = self.client['price_tracker_db']
