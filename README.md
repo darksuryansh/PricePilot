@@ -6,10 +6,11 @@ colorTo: green
 sdk: docker
 pinned: false
 license: mit
-app_port: 8080
+# app_port: 8080
+app_port: 7860
 ---
 
-# 🛍️ Price Pilot - AI-Powered Price Tracker & Review Analyzer
+# 🛍️ Price Pilot - AI-Powered Price Tracker & Review Analyst
 
 An intelligent e-commerce platform that tracks product prices across Amazon, Flipkart, Myntra, and Meesho while providing AI-powered review analysis and insights using Google Gemini.
 
@@ -282,7 +283,7 @@ This project is licensed under the MIT License.
 
 **Suryansh**
 - GitHub: [@darksuryansh](https://github.com/darksuryansh)
-- Repository: [Review-Lens](https://github.com/darksuryansh/Review-Lens)
+- Repository: [PricePilot](https://github.com/darksuryansh/PricePilot)
 
 ## 🙏 Acknowledgments
 
