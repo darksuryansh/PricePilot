@@ -76,21 +76,17 @@ class MyntraSpider(scrapy.Spider):
                         "timeout": 30000,
                     },
                     "playwright_page_methods": [
-                        # Wait for critical content to load
-                        {
-                            "method": "wait_for_selector",
-                            "args": ["h1.pdp-title, h1.pdp-name"],
-                            "kwargs": {"timeout": 15000}
-                        },
-                        # Wait a bit more for dynamic content
-                        ("wait_for_timeout", 2000),
+                        # Wait for dynamic content
+                        ("wait_for_timeout", 3000),
+                        # Try to wait for product content (but don't fail if not found)
                         # Scroll to middle of page
                         ("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
-                        ("wait_for_timeout", 1500),
+                        ("wait_for_timeout", 2000),
                         # Scroll to bottom to load reviews
                         ("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                        ("wait_for_timeout", 1500),
+                        ("wait_for_timeout", 2000),
                     ],
+                    "playwright_include_page": True,  # Include the page object for debugging
                 },
                 errback=self.errback_handler
             )
@@ -192,6 +188,24 @@ class MyntraSpider(scrapy.Spider):
 
     def parse(self, response):
         """Parse data from Myntra web page"""
+        
+        # Check for error page or bot detection
+        page_title = response.css("title::text").get()
+        body_text = response.css("body").get()
+        
+        if not page_title or not body_text:
+            self.logger.error("❌ Empty response received - page didn't load")
+            return
+        
+        # Check for common error indicators
+        error_indicators = ['oops', 'something went wrong', 'error', 'access denied', 'captcha']
+        if any(indicator in page_title.lower() for indicator in error_indicators if page_title):
+            self.logger.error(f"❌ Error page detected: {page_title}")
+            self.logger.error("⚠️ Myntra may have detected bot activity. Try:")
+            self.logger.error("   1. Using residential proxies")
+            self.logger.error("   2. Reducing scraping frequency")
+            self.logger.error("   3. Using Myntra's official API if available")
+            return
         
         # Save HTML for debugging
         import os
