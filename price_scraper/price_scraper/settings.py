@@ -165,14 +165,18 @@ DOWNLOAD_HANDLERS = {
     "https": "scrapy_playwright.handler.ScrapyPlaywrightDownloadHandler",
 }
 
-PLAYWRIGHT_BROWSER_TYPE = "firefox"
+# Use Chromium instead of Firefox (better for bot detection avoidance)
+PLAYWRIGHT_BROWSER_TYPE = "chromium"
 PLAYWRIGHT_LAUNCH_OPTIONS = {
     "headless": True,
     "timeout": 60000,
-    # Add args to prevent the "Firefox is already running" popup
+    # Chromium args to avoid detection
     "args": [
-        "--no-remote",
-        "--new-instance"
+        "--disable-blink-features=AutomationControlled",
+        "--disable-dev-shm-usage",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-gpu",
     ]
 }
 
@@ -181,7 +185,13 @@ PLAYWRIGHT_LAUNCH_OPTIONS = {
 PLAYWRIGHT_CONTEXTS = {
     "default": {
         "viewport": {"width": 1920, "height": 1080},
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "locale": "en-US",
+        "timezone_id": "America/New_York",
+        "geolocation": {"longitude": -73.935242, "latitude": 40.730610},
+        "permissions": ["geolocation"],
+        "ignore_https_errors": True,
+        "java_script_enabled": True,
     }
 }
 

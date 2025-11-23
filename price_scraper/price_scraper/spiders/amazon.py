@@ -41,24 +41,80 @@ class AmazonSpider(scrapy.Spider):
 
     def start_requests(self):
         """Use Playwright for the initial request."""
+        # Stealth JavaScript to inject - makes browser look more human
+        stealth_js = """
+        () => {
+            // Override navigator properties
+            Object.defineProperty(navigator, 'webdriver', {get: () => false});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+            
+            // Add chrome object
+            window.chrome = {runtime: {}};
+            
+            // Override permissions
+            const originalQuery = window.navigator.permissions.query;
+            window.navigator.permissions.query = (parameters) => (
+                parameters.name === 'notifications' ?
+                    Promise.resolve({state: Notification.permission}) :
+                    originalQuery(parameters)
+            );
+        }
+        """
+        
         yield scrapy.Request(
             self.url,
             callback=self.parse,
             meta={
                 "playwright": True,
-                "playwright_context": "default",  # Changed from "persistent" to "default"
+                "playwright_context": "default",
+                "playwright_include_page": True,  # Get page object for JS injection
                 "playwright_page_goto_kwargs": {
-                    "wait_until": "networkidle",
+                    "wait_until": "domcontentloaded",
                     "timeout": 60000,
                 },
+                "playwright_page_init_callback": stealth_js,  # Inject stealth JS
+                "playwright_page_methods": [
+                    # Wait for the product title to appear
+                    {
+                        "method": "wait_for_selector",
+                        "args": ["#productTitle, .product-title, h1"],
+                        "kwargs": {"timeout": 30000, "state": "visible"}
+                    },
+                    # Random human-like delay
+                    {
+                        "method": "wait_for_timeout",
+                        "args": [2000]  # 2 second delay
+                    }
+                ],
                 "playwright_headers": {
                     "User-Agent": self.human_user_agent,
                     "Accept-Language": "en-US,en;q=0.9",
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Encoding": "gzip, deflate, br",
+                    "DNT": "1",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Cache-Control": "max-age=0"
                 }
             },
             errback=self.errback_handler
         )
+    
+    def errback_handler(self, failure):
+        """Handle request failures"""
+        self.logger.error(f"Request failed: {failure.value}")
+        self.logger.error(f"Failure type: {type(failure.value).__name__}")
+        
+        # Log additional details if available
+        if hasattr(failure.value, 'response'):
+            response = failure.value.response
+            if response:
+                self.logger.error(f"Response status: {response.status}")
+                self.logger.error(f"Response URL: {response.url}")
 
     def get_api_product_details(self, asin):
         """Get product details from RapidAPI"""
@@ -100,9 +156,26 @@ class AmazonSpider(scrapy.Spider):
             return
 
         self.logger.info(f"Processing ASIN: {asin}")
+        
+        # Check if page loaded properly
+        if not response or response.status != 200:
+            self.logger.error(f"Failed to load page. Status: {response.status if response else 'None'}")
+            return
+        
+        # Check for CAPTCHA or bot detection
+        page_text = response.text[:1000].lower()
+        if 'captcha' in page_text or 'robot check' in page_text:
+            self.logger.error("Amazon CAPTCHA/bot detection encountered")
+            return
 
         # --- SCRAPE FROM WEB PAGE ---
         scraped_data = self.scrape_from_page(response, asin)
+        
+        # Verify we got some data
+        if not scraped_data.get('title'):
+            self.logger.error(f"Failed to extract product title. Page might not have loaded correctly.")
+            self.logger.error(f"Page title: {response.css('title::text').get()}")
+            return
         
         # --- GET DATA FROM API (if api_key provided) ---
         api_product_data = None

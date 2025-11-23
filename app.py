@@ -1483,6 +1483,10 @@ Be honest and critical. If the product has significant issues in reviews, reflec
 def generate_basic_insights(reviews, product, price_stats):
     """Generate basic insights without AI when Gemini is unavailable"""
     
+    # Ensure price_stats is not None or empty
+    if not price_stats:
+        price_stats = {}
+    
     # Extract pros and cons from reviews
     pros = []
     cons = []
@@ -1529,12 +1533,13 @@ def generate_basic_insights(reviews, product, price_stats):
     insights_text = f"This product has {review_count} customer reviews with an average rating of {rating_text}. "
     
     # Add price information
-    if price_stats.get('current_price'):
+    if price_stats and price_stats.get('current_price'):
         current = price_stats['current_price']
         insights_text += f"Currently priced at ₹{current:,.0f}. "
         
-        if price_stats.get('price_drop_percentage', 0) > 5:
-            insights_text += f"Great deal - price dropped by {price_stats['price_drop_percentage']:.0f}%! "
+        price_drop = price_stats.get('price_drop_percentage')
+        if price_drop and price_drop > 5:
+            insights_text += f"Great deal - price dropped by {price_drop:.0f}%! "
         elif price_stats.get('lowest_price') and current == price_stats['lowest_price']:
             insights_text += "Currently at its lowest recorded price! "
     
@@ -1551,8 +1556,9 @@ def generate_basic_insights(reviews, product, price_stats):
         recommendation = "Mixed reviews - please read customer feedback carefully. "
         buy_recommendation = "CONSIDER ALTERNATIVES"
     
-    if price_stats.get('price_drop_percentage', 0) > 10:
-        recommendation += f"Currently {price_stats['price_drop_percentage']:.0f}% off - great time to buy!"
+    price_drop = price_stats.get('price_drop_percentage') if price_stats else None
+    if price_drop and price_drop > 10:
+        recommendation += f"Currently {price_drop:.0f}% off - great time to buy!"
     
     return {
         'insights': insights_text,

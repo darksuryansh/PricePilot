@@ -164,6 +164,14 @@ class MongoPipeline:
             price_changed = (price_numeric != old_price_numeric) if (price_numeric and old_price_numeric) else False
             reviews_changed = (item.get('total_reviews') != old_reviews_count) if (item.get('total_reviews') and old_reviews_count) else False
             
+            # Check if essential fields are missing (need to update even if price/reviews haven't changed)
+            missing_essential_data = (
+                not existing_product.get('title') or 
+                not existing_product.get('brand') or
+                not existing_product.get('images') or
+                len(existing_product.get('images', [])) == 0
+            )
+            
             # Always update these fields
             update_fields = {
                 'last_updated': timestamp,
@@ -173,8 +181,8 @@ class MongoPipeline:
             update_fields['current_price'] = item.get('price')
             update_fields['price_numeric'] = price_numeric
             
-            # Update if data changed
-            if price_changed or reviews_changed:
+            # Update if data changed OR if essential fields are missing
+            if price_changed or reviews_changed or missing_essential_data:
                 update_fields.update({
                     'spider': spider.name,
                     'url': item.get('url'),

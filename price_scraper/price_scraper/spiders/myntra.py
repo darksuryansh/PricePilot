@@ -72,20 +72,24 @@ class MyntraSpider(scrapy.Spider):
                     "playwright": True,
                     "playwright_context": "default",
                     "playwright_page_goto_kwargs": {
-                        "wait_until": "networkidle",
-                        "timeout": 60000,
+                        "wait_until": "domcontentloaded",
+                        "timeout": 30000,
                     },
                     "playwright_page_methods": [
+                        # Wait for critical content to load
+                        {
+                            "method": "wait_for_selector",
+                            "args": ["h1.pdp-title, h1.pdp-name"],
+                            "kwargs": {"timeout": 15000}
+                        },
+                        # Wait a bit more for dynamic content
+                        ("wait_for_timeout", 2000),
                         # Scroll to middle of page
-                        ("wait_for_timeout", 2000),
                         ("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
-                        ("wait_for_timeout", 2000),
+                        ("wait_for_timeout", 1500),
                         # Scroll to bottom to load reviews
                         ("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                        ("wait_for_timeout", 2000),
-                        # Scroll again
-                        ("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                        ("wait_for_timeout", 2000),
+                        ("wait_for_timeout", 1500),
                     ],
                 },
                 errback=self.errback_handler
@@ -189,6 +193,15 @@ class MyntraSpider(scrapy.Spider):
     def parse(self, response):
         """Parse data from Myntra web page"""
         
+        # Save HTML for debugging
+        import os
+        debug_dir = os.path.join(os.path.dirname(__file__), '../../debug')
+        os.makedirs(debug_dir, exist_ok=True)
+        debug_file = os.path.join(debug_dir, 'myntra_scrapy_response.html')
+        with open(debug_file, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+        self.logger.info(f"💾 Saved HTML to {debug_file} ({len(response.text)} bytes)")
+        
         # Extract product ID - FIXED
         product_id_match = re.search(r'/(\d{6,})/buy', self.url)
         if not product_id_match:
@@ -205,6 +218,15 @@ class MyntraSpider(scrapy.Spider):
 
         # Scrape from page (after scrolling done by playwright_page_methods)
         scraped_data = self.scrape_from_page(response, product_id)
+        
+        # Debug: Log what was extracted
+        self.logger.info(f"📦 Scraped data summary:")
+        self.logger.info(f"   Title: {scraped_data.get('title')[:50] if scraped_data.get('title') else 'None'}...")
+        self.logger.info(f"   Brand: {scraped_data.get('brand')}")
+        self.logger.info(f"   Price: {scraped_data.get('price')}")
+        self.logger.info(f"   Images: {len(scraped_data.get('images', []))}")
+        self.logger.info(f"   Description: {len(scraped_data.get('description', ''))} chars")
+        self.logger.info(f"   Reviews: {len(scraped_data.get('reviews_from_page', []))}")
         
         # Build final result
         combined_data = {
@@ -235,25 +257,98 @@ class MyntraSpider(scrapy.Spider):
     def scrape_from_page(self, response, product_id):
         """Scrape product data from Myntra page"""
         
+        self.logger.info(f"🔍 Parsing Myntra page for product {product_id}")
+        
+        # Log page title to verify page loaded
+        page_title = response.css("title::text").get()
+        self.logger.info(f"Page title: {page_title}")
+        
         # Title and Brand - Myntra shows Brand first, then product name
-        title_container = response.css("h1.pdp-title, h1.pdp-name").get()
+        # Try multiple selectors for title/brand
+        title = None
+        brand = None
         
-        # Brand is the first part
-        brand = response.css("h1.pdp-title::text, h1.pdp-name::text").get()
-        if brand:
-            brand = brand.strip()
-        
-        # Full title includes brand + product name
+        # Method 1: Standard pdp-title/pdp-name
         title_parts = response.css("h1.pdp-title::text, h1.pdp-name::text").getall()
         if title_parts:
             title = " ".join([t.strip() for t in title_parts if t.strip()])
-        else:
-            title = brand
+            brand = title_parts[0].strip() if title_parts else None
+            self.logger.info(f"✓ Found title (method 1): {title}")
         
-        # Price
+        # Method 2: Try any h1 on page
+        if not title:
+            h1_text = response.css("h1::text").getall()
+            if h1_text:
+                title = " ".join([t.strip() for t in h1_text if t.strip()])
+                brand = h1_text[0].strip() if h1_text else None
+                self.logger.info(f"✓ Found title (method 2 - h1): {title}")
+        
+        # Method 3: Look for data-react-helmet or meta tags
+        if not title:
+            title = response.css("meta[property='og:title']::attr(content)").get()
+            if title:
+                self.logger.info(f"✓ Found title (method 3 - meta): {title}")
+                # Extract brand from title if present
+                brand_match = re.match(r'^([A-Za-z\s&]+)\s+-\s+', title)
+                if brand_match:
+                    brand = brand_match.group(1).strip()
+        
+        # Method 4: Check JSON-LD structured data
+        if not title:
+            json_ld = response.css('script[type="application/ld+json"]::text').get()
+            if json_ld:
+                try:
+                    data = json.loads(json_ld)
+                    title = data.get('name')
+                    brand = data.get('brand', {}).get('name') if isinstance(data.get('brand'), dict) else data.get('brand')
+                    if title:
+                        self.logger.info(f"✓ Found title (method 4 - JSON-LD): {title}")
+                except:
+                    pass
+        
+        if not title:
+            self.logger.warning(f"⚠️ Could not extract title from page")
+            # Log a snippet of the HTML to debug
+            html_snippet = response.css("body").get()[:500] if response.css("body").get() else "No body found"
+            self.logger.warning(f"HTML snippet: {html_snippet}")
+        else:
+            self.logger.info(f"✓ Title: {title}")
+            self.logger.info(f"✓ Brand: {brand}")
+        
+        # Price - Try multiple selectors
+        price = None
+        original_price = None
+        discount = None
+        
+        # Method 1: Standard pdp-price selectors
         price = response.css("span.pdp-price strong::text, div.pdp-price strong::text").get()
         original_price = response.css("span.pdp-mrp::text, span.pdp-discount-price::text").get()
         discount = response.css("span.pdp-discount::text").get()
+        
+        # Method 2: Try price-related classes
+        if not price:
+            price = response.css("[class*='price'] strong::text, [class*='Price'] strong::text").get()
+            self.logger.info(f"✓ Found price (method 2): {price}")
+        
+        # Method 3: Check structured data
+        if not price:
+            json_ld = response.css('script[type="application/ld+json"]::text').get()
+            if json_ld:
+                try:
+                    data = json.loads(json_ld)
+                    offers = data.get('offers', {})
+                    if isinstance(offers, dict):
+                        price = offers.get('price')
+                        if price:
+                            price = f"₹{price}"
+                            self.logger.info(f"✓ Found price (method 3 - JSON-LD): {price}")
+                except:
+                    pass
+        
+        if price:
+            self.logger.info(f"✓ Price: {price}")
+        else:
+            self.logger.warning(f"⚠️ Could not extract price from page")
         
         price_numeric = self._extract_price(price)
         
@@ -412,15 +507,19 @@ class MyntraSpider(scrapy.Spider):
         # Colors
         colors = []
         
-        # Reviews
+        # Reviews - Try multiple methods
         reviews = []
-        review_containers = response.css("div.user-review-main, div.detailed-reviews-userReviewsContainer")
+        
+        # Method 1: Standard review containers
+        review_containers = response.css("div.user-review-main, div.detailed-reviews-userReviewsContainer, [class*='user-review'], [class*='UserReview']")
+        
+        self.logger.info(f"Found {len(review_containers)} review containers")
         
         for review in review_containers:
-            review_title = review.css("div.user-review-title::text, div.user-review-reviewTitle::text").get()
-            rating_elem = review.css("div.user-review-rating::text, span.user-review-rating::text").get()
-            review_text = review.css("div.user-review-reviewTextWrapper::text, div.user-review-commentText::text").get()
-            author = review.css("div.user-review-left::text, div.user-review-reviewerName::text").get()
+            review_title = review.css("div.user-review-title::text, div.user-review-reviewTitle::text, [class*='reviewTitle']::text").get()
+            rating_elem = review.css("div.user-review-rating::text, span.user-review-rating::text, [class*='rating']::text").get()
+            review_text = review.css("div.user-review-reviewTextWrapper::text, div.user-review-commentText::text, [class*='commentText']::text, [class*='reviewText']::text").get()
+            author = review.css("div.user-review-left::text, div.user-review-reviewerName::text, [class*='reviewerName']::text").get()
             
             if review_text and len(review_text.strip()) > 10:
                 reviews.append({
@@ -431,13 +530,35 @@ class MyntraSpider(scrapy.Spider):
                     "verified_purchase": True
                 })
         
+        # Method 2: If no reviews found, try alternative structure
+        if len(reviews) == 0:
+            self.logger.info("Trying alternative review selectors...")
+            alt_reviews = response.css("[class*='review-card'], [class*='Review-card'], [data-review]")
+            for review in alt_reviews:
+                review_text = " ".join(review.css("::text").getall())
+                if len(review_text.strip()) > 20:
+                    reviews.append({
+                        "title": None,
+                        "rating": None,
+                        "text": review_text.strip(),
+                        "author": "Anonymous",
+                        "verified_purchase": True
+                    })
+        
         # Log review findings
         if total_reviews:
             self.logger.info(f"✅ Total reviews: {total_reviews} | Scraped samples: {len(reviews)}")
             if len(reviews) < 10 and total_reviews >= 10:
-                self.logger.warning(f"⚠ Only {len(reviews)} reviews scraped. Myntra loads reviews dynamically. Consider implementing API-based review fetching for more reviews.")
+                self.logger.warning(f"⚠ Only {len(reviews)} reviews scraped. Myntra loads reviews dynamically.")
         else:
-            self.logger.info(f"Found {len(reviews)} reviews on product page (total count not available)")
+            self.logger.info(f"Found {len(reviews)} reviews on product page")
+        
+        # If still no reviews, check if the page has a reviews section at all
+        if len(reviews) == 0:
+            reviews_section = response.css("[class*='review']").getall()
+            self.logger.info(f"Reviews section HTML elements found: {len(reviews_section)}")
+            if len(reviews_section) > 0:
+                self.logger.info(f"Sample review HTML: {reviews_section[0][:200] if reviews_section else 'None'}")
         
         return {
             "title": title,
