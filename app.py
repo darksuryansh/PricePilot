@@ -286,13 +286,23 @@ def scrape():
                             print(f"✅ Found match on {other_platform}")
             
             # Return the product ID and cross-platform results
-            return jsonify({
+            # Also return the main product data if found
+            response_data = {
                 'success': True,
                 'message': 'Product scraped successfully',
                 'product_id': product_id,
                 'platform': platform,
                 'cross_platform_matches': cross_platform_results
-            })
+            }
+            
+            # Include main product data in response
+            if main_product:
+                response_data['product'] = serialize_doc(main_product)
+            else:
+                # If main product not found, log warning
+                print(f"⚠️ Warning: Main product {product_id} not found in database after scraping")
+            
+            return jsonify(response_data)
         else:
             # Scraping failed - no success indicators found
             print(f"✗ Scraping failed - no success indicators found")
@@ -669,15 +679,22 @@ def logout():
 def get_product(product_id):
     """Get product details from database"""
     try:
+        print(f"🔍 Fetching product: {product_id}")
+        
         # Try finding by ASIN first (Amazon)
         product = products_collection.find_one({'asin': product_id})
         id_field = 'asin'
         platform = 'amazon'
         
+        if product:
+            print(f"✓ Found product by ASIN: {product_id}")
+        
         # If not found, try product_id (Flipkart/Myntra/Meesho)
         if not product:
             product = products_collection.find_one({'product_id': product_id})
             id_field = 'product_id'
+            if product:
+                print(f"✓ Found product by product_id: {product_id}")
             # Determine platform from URL or stored platform field
             if product:
                 if product.get('platform'):
@@ -692,6 +709,10 @@ def get_product(product_id):
                     platform = 'unknown'
         
         if not product:
+            print(f"❌ Product not found: {product_id}")
+            # Let's check what products ARE in the database
+            sample_products = list(products_collection.find({}).limit(5))
+            print(f"📊 Sample products in DB: {[p.get('asin') or p.get('product_id') for p in sample_products]}")
             return jsonify({'error': 'Product not found'}), 404
         
         # Get price statistics
