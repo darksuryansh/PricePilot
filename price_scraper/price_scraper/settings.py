@@ -182,8 +182,10 @@ PLAYWRIGHT_LAUNCH_OPTIONS = {
 
 # Remove persistent context to avoid profile conflicts
 # Each run will use a fresh browser instance
-PLAYWRIGHT_CONTEXTS = {
-    "default": {
+import os
+
+def get_playwright_context():
+    context = {
         "viewport": {"width": 1920, "height": 1080},
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
         "locale": "en-US",
@@ -193,6 +195,28 @@ PLAYWRIGHT_CONTEXTS = {
         "ignore_https_errors": True,
         "java_script_enabled": True,
     }
+    
+    # Add proxy configuration if PROXY_URL is set
+    proxy_url = os.getenv('PROXY_URL')
+    if proxy_url:
+        # Parse proxy URL to extract server and credentials
+        # Format: http://scraperapi:API_KEY@proxy-server.scraperapi.com:8001
+        from urllib.parse import urlparse
+        parsed = urlparse(proxy_url)
+        
+        context["proxy"] = {
+            "server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}",
+        }
+        
+        # Add authentication if present
+        if parsed.username and parsed.password:
+            context["proxy"]["username"] = parsed.username
+            context["proxy"]["password"] = parsed.password
+    
+    return context
+
+PLAYWRIGHT_CONTEXTS = {
+    "default": get_playwright_context()
 }
 
 # Enable and configure the AutoThrottle extension

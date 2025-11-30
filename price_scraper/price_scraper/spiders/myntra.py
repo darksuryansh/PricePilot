@@ -25,13 +25,6 @@ class MyntraSpider(scrapy.Spider):
         # Get API key from command line argument or environment variable
         self.api_key = api_key or os.getenv('RAPIDAPI_KEY')
         
-        # Get proxy URL if available (for production/cloud deployment)
-        self.proxy_url = os.getenv('PROXY_URL')
-        if self.proxy_url:
-            self.logger.info(f"✓ Proxy configured for cloud deployment")
-        else:
-            self.logger.info(f"ℹ No proxy - running in local mode")
-        
         # Extract product_id from URL if not provided
         if url and not product_id:
             # Myntra URLs: https://www.myntra.com/kurtas/jompers/product-name/27638086/buy
@@ -93,10 +86,8 @@ class MyntraSpider(scrapy.Spider):
                 "playwright_include_page": True,
             }
             
-            # Add proxy if configured (for cloud deployment)
-            if self.proxy_url:
-                request_meta["proxy"] = self.proxy_url
-                self.logger.info(f"🔒 Using proxy for request")
+            # Proxy is now configured in settings.py at the context level
+            # No need to set it in request meta
             
             yield scrapy.Request(
                 self.url,

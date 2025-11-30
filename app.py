@@ -300,12 +300,19 @@ def scrape():
                 # Check if the product has error title (bot detection)
                 title = main_product.get('title') or ''
                 if 'oops' in title.lower() or 'something went wrong' in title.lower() or 'error' in title.lower():
-                    # Bot detection detected
+                    # Bot detection detected - provide helpful message
+                    error_message = f'{platform.title()} blocked our request due to bot detection.'
+                    suggestion = 'This website works when running locally but is blocked on cloud servers.'
+                    
+                    if platform == 'myntra':
+                        suggestion += ' To enable Myntra scraping on cloud: Add a residential proxy service (ScraperAPI, Bright Data, or Oxylabs) by setting the PROXY_URL environment variable. See MYNTRA_PROXY_SETUP.md for details.'
+                    
                     return jsonify({
-                        'error': f'{platform.title()} bot detection: The website blocked our scraper. This usually happens when scraping from cloud/datacenter IPs.',
-                        'suggestion': 'Please try again later or use a different platform. Myntra works when running locally but may be blocked on cloud servers.',
+                        'error': error_message,
+                        'suggestion': suggestion,
                         'product_id': product_id,
-                        'platform': platform
+                        'platform': platform,
+                        'workaround': 'Try other platforms: Amazon, Flipkart, or Meesho work on cloud deployment.'
                     }), 403
                 
                 response_data['product'] = serialize_doc(main_product)
