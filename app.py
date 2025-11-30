@@ -297,6 +297,17 @@ def scrape():
             
             # Include main product data in response
             if main_product:
+                # Check if the product has error title (bot detection)
+                title = main_product.get('title') or ''
+                if 'oops' in title.lower() or 'something went wrong' in title.lower() or 'error' in title.lower():
+                    # Bot detection detected
+                    return jsonify({
+                        'error': f'{platform.title()} bot detection: The website blocked our scraper. This usually happens when scraping from cloud/datacenter IPs.',
+                        'suggestion': 'Please try again later or use a different platform. Myntra works when running locally but may be blocked on cloud servers.',
+                        'product_id': product_id,
+                        'platform': platform
+                    }), 403
+                
                 response_data['product'] = serialize_doc(main_product)
             else:
                 # If main product not found, log warning
