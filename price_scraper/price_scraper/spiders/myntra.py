@@ -63,6 +63,22 @@ class MyntraSpider(scrapy.Spider):
         
         # Go straight to web scraping with scrolling to load reviews
         if self.url:
+            # Check if we should use ScraperAPI URL format (alternative to proxy)
+            scraper_api_key = os.getenv('SCRAPERAPI_KEY')
+            proxy_url = os.getenv('PROXY_URL')
+            
+            target_url = self.url
+            
+            # ScraperAPI alternative: Use their URL format instead of proxy
+            # This bypasses the Playwright proxy authentication issue
+            if scraper_api_key and not proxy_url:
+                target_url = f"http://api.scraperapi.com?api_key={scraper_api_key}&url={self.url}"
+                self.logger.info(f"🔒 Using ScraperAPI URL format")
+            elif proxy_url:
+                self.logger.info(f"🔒 Using proxy from PROXY_URL")
+            else:
+                self.logger.info(f"ℹ️ No proxy configured - direct connection")
+            
             self.logger.info(f"🌐 Scraping Myntra product page")
             
             # Prepare request meta
@@ -86,11 +102,8 @@ class MyntraSpider(scrapy.Spider):
                 "playwright_include_page": True,
             }
             
-            # Proxy is now configured in settings.py at the context level
-            # No need to set it in request meta
-            
             yield scrapy.Request(
-                self.url,
+                target_url,
                 callback=self.parse,
                 dont_filter=True,
                 meta=request_meta,
