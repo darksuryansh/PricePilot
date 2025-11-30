@@ -25,6 +25,13 @@ class MyntraSpider(scrapy.Spider):
         # Get API key from command line argument or environment variable
         self.api_key = api_key or os.getenv('RAPIDAPI_KEY')
         
+        # Get proxy URL if available (for production/cloud deployment)
+        self.proxy_url = os.getenv('PROXY_URL')
+        if self.proxy_url:
+            self.logger.info(f"✓ Proxy configured for cloud deployment")
+        else:
+            self.logger.info(f"ℹ No proxy - running in local mode")
+        
         # Extract product_id from URL if not provided
         if url and not product_id:
             # Myntra URLs: https://www.myntra.com/kurtas/jompers/product-name/27638086/buy
@@ -64,30 +71,38 @@ class MyntraSpider(scrapy.Spider):
         # Go straight to web scraping with scrolling to load reviews
         if self.url:
             self.logger.info(f"🌐 Scraping Myntra product page")
+            
+            # Prepare request meta
+            request_meta = {
+                "playwright": True,
+                "playwright_context": "default",
+                "playwright_page_goto_kwargs": {
+                    "wait_until": "domcontentloaded",
+                    "timeout": 30000,
+                },
+                "playwright_page_methods": [
+                    # Wait for dynamic content
+                    ("wait_for_timeout", 3000),
+                    # Scroll to middle of page
+                    ("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
+                    ("wait_for_timeout", 2000),
+                    # Scroll to bottom to load reviews
+                    ("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
+                    ("wait_for_timeout", 2000),
+                ],
+                "playwright_include_page": True,
+            }
+            
+            # Add proxy if configured (for cloud deployment)
+            if self.proxy_url:
+                request_meta["proxy"] = self.proxy_url
+                self.logger.info(f"🔒 Using proxy for request")
+            
             yield scrapy.Request(
                 self.url,
                 callback=self.parse,
                 dont_filter=True,
-                meta={
-                    "playwright": True,
-                    "playwright_context": "default",
-                    "playwright_page_goto_kwargs": {
-                        "wait_until": "domcontentloaded",
-                        "timeout": 30000,
-                    },
-                    "playwright_page_methods": [
-                        # Wait for dynamic content
-                        ("wait_for_timeout", 3000),
-                        # Try to wait for product content (but don't fail if not found)
-                        # Scroll to middle of page
-                        ("evaluate", "window.scrollTo(0, document.body.scrollHeight / 2)"),
-                        ("wait_for_timeout", 2000),
-                        # Scroll to bottom to load reviews
-                        ("evaluate", "window.scrollTo(0, document.body.scrollHeight)"),
-                        ("wait_for_timeout", 2000),
-                    ],
-                    "playwright_include_page": True,  # Include the page object for debugging
-                },
+                meta=request_meta,
                 errback=self.errback_handler
             )
 
