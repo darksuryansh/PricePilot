@@ -12,7 +12,7 @@ app_port: 7860
 
 # 🛍️ Price Pilot - AI-Powered Price Tracker & Review Analyst
 
-An intelligent e-commerce platform that tracks product prices across Amazon, Flipkart, Myntra, and Meesho while providing AI-powered review analysis and insights using Google Gemini.
+An intelligent e-commerce platform that tracks product prices across Amazon, Flipkart and Myntra while providing AI-powered review analysis and insights using Google Gemini.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
