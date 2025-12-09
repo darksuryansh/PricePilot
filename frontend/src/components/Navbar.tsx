@@ -28,12 +28,12 @@ export function Navbar({ onNavigate, onSearch }: NavbarProps) {
             onClick={() => onNavigate('home')}
             className="flex items-center gap-2 flex-shrink-0 group"
           >
-            <div className="relative w-10 h-10 bg-gradient-to-br from-blue-600 via-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-blue-500/50 transition-all duration-300 animate-gradient group-hover:scale-110">
-              <Sparkles className="w-5 h-5 text-white animate-pulse" />
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-purple-400 rounded-xl opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300" />
+            <div className="">
+              <Sparkles className="w-5 h-5 text-purple-600 animate-pulse" />
+              <div className="" />
             </div>
             <span className="text-xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent font-bold">
-              PricePilot
+              PricePilot 
             </span>
           </button>
 
