@@ -17,6 +17,8 @@ import { Toaster } from "./components/ui/sonner";
 import { toast } from "sonner";
 import * as api from "./services/api";
 
+
+
 // Mock product database
 const mockProducts = {
   "iphone 15 pro": {
